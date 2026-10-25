@@ -1,126 +1,167 @@
-# 🤖 RecruitAI Engine: Autonomous Recruitment Intelligence Pipeline
+# 🤖 RecruitAI — AI-Powered Job Tracking & Recruitment Intelligence
 
-![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python\&logoColor=white)
 ![Flask](https://img.shields.io/badge/Flask-Web%20Framework-black?logo=flask)
 ![n8n](https://img.shields.io/badge/n8n-Workflow%20Automation-FF6C37?logo=n8n)
-![MySQL](https://img.shields.io/badge/MySQL-Relational%20DB-4479A1?logo=mysql&logoColor=white)
-![Meta Llama 3.1](https://img.shields.io/badge/Meta%20Llama%203.1-LLM-0466C8)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?logo=tailwind-css&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-Database-4479A1?logo=mysql\&logoColor=white)
+![LLM](https://img.shields.io/badge/AI-LLM%20Integration-6C63FF)
+![Status](https://img.shields.io/badge/Status-Development-orange)
 
-## 📌 The Problem & Solution
-**The Problem:** Modern engineering students and recruiters are flooded with automated emails. Job alerts, newsletters, security updates, and promotional spam clutter the inbox, making it incredibly difficult to track genuine, actionable hiring opportunities.
+## 📌 Overview
 
-**The Solution:** RecruitAI is a multi-threaded, fully autonomous data pipeline that monitors inbound emails in real-time. It utilizes a dual-agent LLM architecture to filter out non-hiring noise with 99% accuracy, extracts structured job metadata, and normalizes it into a highly visual, interactive web dashboard.
+RecruitAI is an AI-powered job tracking system that automates the processing of recruitment-related emails and organizes extracted job information in a web dashboard.
 
----
+Job alerts, newsletters, and promotional emails can make it difficult to identify relevant hiring opportunities. RecruitAI addresses this problem by combining **LLM-based email classification, hiring-intent validation, structured information extraction, and workflow automation**.
 
-## 🏗️ System Architecture: The n8n AI Pipeline
-This project is powered by an event-driven automation backend built in **n8n**. The pipeline is designed with strict data validation gates to prevent AI hallucinations and ensure database integrity.
+The system uses n8n to orchestrate the processing pipeline, MySQL to store structured data, and Flask to present the results through an interactive dashboard.
 
-Below is the complete node-by-node breakdown of the backend processing engine.
+## ✨ Key Features
 
-### Stage 1: Data Ingestion & Sanitization
-**1. Trigger Node (Gmail)**
-* **Function:** Acts as the event listener. It monitors a designated inbox for unread emails and triggers the pipeline the second a new email arrives.
-* **Why it matters:** Enables real-time, asynchronous processing without needing manual cron jobs.
+* **Automated Email Processing:** Uses a configured Gmail trigger to initiate the workflow for incoming emails.
+* **AI-Based Classification:** Categorizes emails into predefined groups, such as job alerts, newsletters, and interview invitations.
+* **Hiring-Intent Validation:** Applies a separate validation step to distinguish relevant hiring opportunities from unrelated content.
+* **Structured Job Extraction:** Extracts job roles, company names, and locations from recruitment emails.
+* **Relational Database Storage:** Stores processed email metadata and extracted job information in MySQL.
+* **Interactive Dashboard:** Displays stored job information using a Flask web application.
+* **Live Search and Filtering:** Filters displayed jobs by role, company, and location using JavaScript.
+* **Discord Notifications:** Supports sending job-related notifications through a configured Discord webhook.
 
-**2. The Email Cleaner (HTML/Text Extractor)**
-* **Function:** Strips out messy HTML tags, inline CSS, and hidden tracking pixels from the raw email payload, converting it into pure, machine-readable plain text.
-* **Why it matters:** LLMs charge by the token and get confused by HTML noise. Cleaning the data first ensures high-precision prompt processing and significantly reduces API costs.
+## 🏗️ System Architecture
 
-### Stage 2: The Dual-Agent Intelligence Gate
-To guarantee absolute accuracy, the system uses two separate AI agents (powered by Meta-Llama 3.1) rather than a single complex prompt.
+The project consists of three main components.
 
-**3. Agent 1: The Classifier**
-* **Function:** Performs macro-analysis on the cleaned email body and subject line. It is strictly constrained to a pre-defined taxonomy (e.g., `job_alert_linkedin`, `newsletter`, `interview_invite`).
-* **Output:** A JSON object containing `category`, `confidence` score, and `reasoning`.
+### 1. AI Automation Pipeline — n8n
 
-**4. Agent 2: The Hiring Validator**
-* **Function:** Acts as a strict Quality Assurance (QA) gate. It reviews the original email against Agent 1's classification and makes a definitive binary decision on whether the email contains a genuine hiring opportunity.
-* **Output:** A strict JSON boolean (`hiring_intent_valid: true/false`), along with a `validation_reason`.
-* **Why it matters:** This "human-in-the-loop" simulation prevents false positives (like a newsletter talking *about* jobs) from polluting the database.
+The n8n workflow orchestrates the processing of recruitment emails.
 
-**5. The Traffic Cop (If / Logic Gate)**
-* **Function:** Evaluates the `hiring_intent_valid` boolean from Agent 2.
-* **Routing:** If `false`, the workflow terminates gracefully, discarding the spam. If `true`, the payload is passed to the extraction engine.
+1. **Email Ingestion:** Receives email data through the configured Gmail trigger.
+2. **Text Cleaning:** Extracts readable content from email messages.
+3. **Email Classification:** Uses an LLM to classify the email into a predefined category.
+4. **Hiring Validation:** Evaluates whether the email contains a relevant hiring opportunity.
+5. **Conditional Routing:** Passes valid hiring-related emails to the extraction stage.
+6. **Job Information Extraction:** Extracts structured information, including role, company, and location.
+7. **Item Splitting:** Processes multiple extracted jobs as separate records.
+8. **Database Storage:** Writes email metadata and job information to MySQL.
+9. **Notifications:** Sends notifications through Discord when configured.
 
-### Stage 3: Extraction & Data Normalization
-**6. The Job Extractor (LLM Node)**
-* **Function:** An advanced prompt engineered to read conversational text and extract specific entities. It handles complex, multi-job emails (e.g., daily LinkedIn digests).
-* **Output:** A structured JSON array containing `{ role, company, location }` for every job found in the email.
+### 2. Database Layer — MySQL
 
-**7. Item Lists Node (The Array Splitter)**
-* **Function:** Takes the single JSON array generated by the Extractor and splits it into individual, distinct items.
-* **Why it matters:** If an email contains three different jobs, this node "fans out" the workflow so the database logs three separate rows instead of one giant text blob.
+The database separates email metadata from extracted job records.
 
-### Stage 4: Database & Delivery
-**8. MySQL Node: `email_events` Upsert**
-* **Function:** Logs the metadata of the processed email (Date, Source Platform, Final Category) using the unique `message_id` as the primary key.
+* **`email_events`:** Stores email identifiers, source platforms, categories, and processing timestamps.
+* **`jobs`:** Stores extracted job roles, company names, locations, and associated email identifiers.
 
-**9. MySQL Node: `jobs` Upsert**
-* **Function:** Inserts the extracted job specifics (Role, Company, Location) into the relational `jobs` table, linking back to the `email_events` table via the `message_id` foreign key.
-* **Why it matters:** Database normalization ensures the data can be queried efficiently by the frontend dashboard.
+This relational structure allows a single email to be associated with multiple extracted job records.
 
-**10. Discord Webhook Node**
-* **Function:** Formats the extracted job data into a visually appealing Discord embed and pushes it to a private channel.
-* **Why it matters:** Provides instant, mobile-friendly push notifications the second a high-priority job or interview invite clears the pipeline.
+### 3. Web Dashboard — Flask
 
----
+The Flask application retrieves stored information from MySQL and presents it through a web interface.
 
-## 💻 The Frontend: Flask & Tailwind Dashboard
-The presentation layer is a lightweight, read-only web application built with **Python/Flask**. It serves as a modern command center for the pipeline.
+Dashboard capabilities include:
 
-**Key Features:**
-* **Real-Time Database Sync:** Uses `mysql-connector-python` to perform `JOIN` queries across the normalized tables, delivering the latest pipeline results on page load.
-* **Client-Side Live Search:** Implements custom JavaScript to instantly filter the data table by Role, Company, or Location without making additional server requests.
-* **Pure CSS State Management:** Features a custom-engineered, conflict-free modal system (avoiding Tailwind JIT bugs) that displays the deep AI extraction details (Confidence, Reasoning, Validation Metadata) for every job.
-* **Executive Metrics:** Dynamically calculates and displays total verified roles and top source platforms.
+* Viewing extracted job information.
+* Searching and filtering job records.
+* Viewing summary metrics and source-platform statistics.
+* Inspecting available job and email details.
 
----
+## 🔄 Processing Workflow
 
-## 🚀 How to Run Locally
+```text
+Incoming Email
+      |
+      v
+Email Text Cleaning
+      |
+      v
+LLM Classification
+      |
+      v
+Hiring-Intent Validation
+      |
+      v
+Conditional Routing
+      |
+      v
+Job Information Extraction
+      |
+      v
+Split Extracted Job Records
+      |
+      v
+MySQL Database
+      |
+      +-------------------+
+      |                   |
+      v                   v
+Flask Dashboard     Discord Notification
+```
+
+## 🛠️ Technology Stack
+
+| Component              | Technologies                        |
+| ---------------------- | ----------------------------------- |
+| Programming Language   | Python                              |
+| Workflow Automation    | n8n                                 |
+| AI and Language Models | LLM API integration                 |
+| Backend Framework      | Flask                               |
+| Database               | MySQL                               |
+| Frontend               | HTML, CSS, JavaScript, Tailwind CSS |
+| Notifications          | Discord Webhooks                    |
+| Configuration          | Python dotenv                       |
+| Version Control        | Git and GitHub                      |
+
+## 🚀 Run Locally
 
 ### Prerequisites
-1. Python 3.12+
-2. MySQL Server (running locally)
-3. n8n (Desktop or Self-Hosted)
 
-### Setup Instructions
-1. **Clone the repository**
-2. **Database Setup:**
-   * Create a MySQL database named `recruitment_db`.
-   * Execute the table creation schemas for `email_events` and `jobs`.
-3. **Configure the Web App:**
-   * Navigate to the `recruitment-dashboard` directory.
-   * Install dependencies: `pip install flask mysql-connector-python`
-   * Update `app.py` with your local MySQL credentials.
-4. **Launch the Dashboard:**
-   * Run `python app.py`
-   * Open a browser and navigate to `http://127.0.0.1:5000`
+Install or configure the following:
 
----
+* Python 3.12 or a compatible supported version.
+* MySQL Server.
+* Git.
+* n8n, if you want to run the automation workflow.
 
-## 🎬 Presentation Demo Flow
-*(For Technical Interviews & Academic Presentations)*
+### 1. Clone the Repository
 
-1. **The Hook:** Open the Flask dashboard. Explain that the UI is populated entirely by autonomous AI extraction—no manual data entry exists in the system.
-2. **The Proof:** Send two live emails to the connected inbox:
-   * *Email A:* A generic tech newsletter (Spam).
-   * *Email B:* A conversational interview invitation for a specific engineering role (Target).
-3. **The Result:** Refresh the dashboard. Show that Email A was successfully intercepted and destroyed by the AI Validator, while Email B appears instantly on the dashboard with its structured metadata viewable via the Details panel.
-4. **Under the Hood:** Open the n8n canvas to visualize the exact execution path of both emails, proving the logic gates and LLM extraction behaved exactly as designed.
+```bash
+git clone https://github.com/YOUR-USERNAME/RecruitAI.git
+cd RecruitAI
+```
 
-Here is the ultimate technical appendix. You can append this directly to the bottom of your README.md file, or save it as a separate STUDY_GUIDE.md document.
+Replace `YOUR-USERNAME` with your GitHub username.
 
-This covers the exact structural mechanics of what you built, designed specifically to help you dominate technical interviews and project defenses within the Department of Computer Science and Engineering.
+### 2. Create a Virtual Environment
 
-📖 Appendix A: Database Schema (MySQL)
-To build the Flask dashboard, we normalized the data into two relational tables. Be prepared to explain why you separated them (Answer: To separate the email metadata from the actual job entities, allowing one email to spawn multiple job records).
+```bash
+python -m venv venv
+```
 
-Table 1: email_events (The Metadata Layer)
-This table logs the execution of the pipeline and serves as the parent record.
+Activate it on Windows:
 
-SQL
+```cmd
+venv\Scripts\activate
+```
+
+### 3. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Configure MySQL
+
+Create the database using the same name specified by `DB_NAME` in your environment configuration.
+
+For example:
+
+```sql
+CREATE DATABASE job_tracker;
+USE job_tracker;
+```
+
+Create the email metadata table:
+
+```sql
 CREATE TABLE email_events (
     message_id VARCHAR(255) PRIMARY KEY,
     platform_source VARCHAR(100),
@@ -128,53 +169,118 @@ CREATE TABLE email_events (
     email_date DATETIME,
     processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-Table 2: jobs (The Entity Layer)
-This table stores the extracted arrays. The message_id acts as a Foreign Key.
+```
 
-SQL
+Create the extracted jobs table:
+
+```sql
 CREATE TABLE jobs (
     job_id INT AUTO_INCREMENT PRIMARY KEY,
     message_id VARCHAR(255),
     role VARCHAR(255),
     company VARCHAR(255),
     location VARCHAR(255),
-    FOREIGN KEY (message_id) REFERENCES email_events(message_id)
+    FOREIGN KEY (message_id)
+        REFERENCES email_events(message_id)
 );
-🧠 Appendix B: Prompt Engineering Strategy
-When an interviewer asks how you controlled the AI, explain your JSON-Enforced Prompting Strategy. You did not just ask the AI to "read the email." You constrained it.
+```
 
-Agent 1 (Classification): Used Zero-Shot Classification. The prompt strictly defined the categories (e.g., job_alert_linkedin, newsletter) and forced the LLM to return a JSON object with a confidence integer.
+Ensure the database schema matches the queries and column names expected by the application and workflow.
 
-Agent 2 (Validation): Used Binary Logic Gates. The prompt was instructed to evaluate the context and return a strict true/false boolean for hiring_intent_valid. This acts as a programmatic kill-switch.
+### 5. Configure Environment Variables
 
-The Extractor: Used Structured Array Generation. The prompt was forced to output a JSON array of objects [{"role": "...", "company": "..."}]. This allowed the n8n Item Lists node to programmatically iterate over the data.
+Create your local `.env` file from the provided example:
 
-🎤 Appendix C: Interview Q&A (The Defense Guide)
-Review these questions before any technical interview or presentation at Jerusalem College of Engineering. These are the exact questions senior engineers will ask you.
+```cmd
+copy .env.example .env
+```
 
-Q: Why use a Multi-Agent architecture instead of just one big prompt?
+Update `.env` with your local MySQL credentials:
 
-Your Answer: "Cost, speed, and accuracy. If I use one massive prompt to do everything, the LLM is prone to hallucination. By separating the tasks, Agent 1 does cheap, fast sorting. Agent 2 acts as a strict QA gate. This 'Traffic Cop' design ensures I only spend compute power extracting jobs from emails that actually contain them, blocking 99% of spam early in the pipeline."
+```env
+DB_HOST=localhost
+DB_USER=your_mysql_username
+DB_PASSWORD=your_mysql_password
+DB_NAME=job_tracker
+```
 
-Q: How do you handle duplicate job alerts? If LinkedIn sends the same job twice, does your database crash?
+Use your actual local database settings. Never commit `.env` or publish database passwords, API keys, or webhook URLs.
 
-Your Answer: "I handled this at the database level using the email's unique Message ID as the Primary Key. When the pipeline pushes to MySQL, it uses an INSERT ... ON DUPLICATE KEY UPDATE (Upsert) operation. If the system sees an email it has already processed, it simply updates the existing record rather than duplicating it."
+### 6. Start the Dashboard
 
-Q: Why use Flask and Tailwind for the frontend instead of React or Angular?
+Run:
 
-Your Answer: "For this specific use case, the frontend is a read-only analytics dashboard. The heavy lifting is done by the n8n backend and the MySQL data layer. Flask provided a lightweight, rapid way to serve server-side rendered HTML and query the database securely, while Tailwind CSS allowed me to build a responsive, production-grade UI without the overhead of a massive JavaScript framework."
+```bash
+python app.py
+```
 
-Q: What happens if the AI encounters an email format it has never seen before?
+Open your browser at:
 
-Your Answer: "That is the advantage of using an LLM (Meta-Llama 3.1) over traditional Regex (Regular Expressions) or web scrapers. Regex breaks if a company changes their email template. The LLM understands semantic context, so even if the format changes entirely—like a recruiter sending a conversational paragraph—the AI can still accurately extract the role, company, and location."
+**http://127.0.0.1:5000**
 
-🚀 Appendix D: Future Scalability
-Always end an interview by explaining how you would make the project even better if you had more time.
+The dashboard requires a working MySQL connection and appropriate database tables.
 
-Vector Database Integration: Integrate Pinecone or ChromaDB to store your resume. The system could then automatically calculate a "Match Score" (0-100%) between the extracted job description and your resume.
+### 7. Configure the n8n Workflow
 
-Automated Reply Drafting: For interview_invite emails, add a final node where the LLM automatically drafts a polite reply confirming your availability, saving it as a draft in your Gmail.
+To enable email processing:
 
-You are fully locked and loaded. Print this out, read it over tomorrow, and you will be able to speak about this architecture like a senior developer.
+1. Import `Recruit_AI-public.json` into your n8n instance.
+2. Configure the required Gmail, LLM, MySQL, and Discord credentials as applicable.
+3. Verify the database settings and workflow configuration.
+4. Test the workflow with sample emails before activating it.
 
-When you review this tomorrow, do you want to run through a quick mock interview where I ask you a technical question and grade your response, or are you feeling confident enough to wrap this up?
+The public workflow contains placeholders for configuration. It does not include your private credentials.
+
+## 📁 Project Structure
+
+```text
+RecruitAI/
+│
+├── app.py                  # Flask application
+├── requirements.txt        # Python dependencies
+├── .env.example            # Environment configuration template
+├── .gitignore              # Excluded files and secrets
+├── README.md               # Project documentation
+├── Recruit_AI-public.json  # Sanitized n8n workflow export
+│
+├── static/
+│   ├── css/
+│   │   └── style.css       # Dashboard styling
+│   └── js/
+│       └── main.js         # Client-side interactions
+│
+└── templates/
+    └── index.html          # Dashboard interface
+```
+
+## 🧪 Testing and Validation
+
+Before using the system with a live inbox, test the workflow with representative examples:
+
+* A recruitment email containing a job role and company.
+* An interview invitation.
+* A general newsletter that mentions jobs but contains no actionable opportunity.
+* An email containing multiple job listings.
+* An email with incomplete or ambiguous job information.
+
+Check that the classification, validation, extraction, database writes, and dashboard display behave as expected.
+
+Quantitative accuracy and reliability should be reported only after testing against a labeled evaluation dataset.
+
+## 🔮 Future Improvements
+
+* **Resume-to-Job Matching:** Compare extracted job descriptions against a resume to estimate relevance.
+* **Duplicate Detection:** Identify duplicate job listings received through different emails.
+* **Application Tracking:** Track application status and interview progress.
+* **Advanced Analytics:** Add filters, trends, and job-source statistics.
+* **Automated Reply Drafting:** Generate suggested responses to interview invitations for user review.
+
+## 👨‍💻 Project Purpose
+
+RecruitAI demonstrates the integration of workflow automation, LLM-based text processing, relational database design, and web application development to address a practical recruitment-information management problem.
+
+The project brings together AI-assisted information extraction and a Python-based dashboard in a single workflow.
+
+---
+
+**Note:** The public workflow is provided for configuration and experimentation. Configure your own credentials and verify its execution before using it with a live inbox.
