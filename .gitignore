@@ -1,0 +1,24 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Python virtual environment
+venv/
+.venv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Logs
+*.log
+
+# Editor settings
+.vscode/
+.idea/
+
+# Private original n8n workflow exports
+
+Recruit Ai.json
+workflow.json

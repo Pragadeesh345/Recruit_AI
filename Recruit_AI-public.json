@@ -1,0 +1,520 @@
+{
+  "name": "Recruit Ai",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "includeSpamTrash": false,
+          "labelIds": [
+            "INBOX"
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -624,
+        528
+      ],
+      "id": "e91000c9-5b5f-4d07-8ad6-989bd26dea49",
+      "name": "Gmail Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst cleanedItems = [];\n\nfor (const item of items) {\n    const rawData = item.json;\n\n    // Extract sender email and name safely\n    let senderEmail = \"\";\n    let senderName = \"\";\n    if (rawData.from && rawData.from.value && rawData.from.value.length > 0) {\n        senderEmail = rawData.from.value[0].address || \"\";\n        senderName = rawData.from.value[0].name || \"\";\n    }\n\n    // Clean the subject (Gmail sometimes prepends 'Subject: ')\n    let cleanSubject = rawData.subject || \"\";\n    if (cleanSubject.startsWith(\"Subject: \")) {\n        cleanSubject = cleanSubject.substring(9);\n    }\n\n    // Clean the body text\n    let rawText = rawData.text || \"\";\n    let cleanText = rawText\n        .replace(/\\r\\n/g, \" \")   // Replace carriage returns\n        .replace(/\\n/g, \" \")     // Replace newlines\n        .replace(/\\s\\s+/g, \" \")  // Replace multiple spaces with a single space\n        .trim();                 // Remove leading/trailing spaces\n\n    // Push the formatted data to the output\n    cleanedItems.push({\n        json: {\n            message_id: rawData.id,\n            date: rawData.date,\n            subject: cleanSubject.trim(),\n            sender_email: senderEmail,\n            sender_name: senderName,\n            email_body_clean: cleanText\n        }\n    });\n}\n\nreturn cleanedItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -288,
+        288
+      ],
+      "id": "ce8bc50c-f362-4918-bf0a-c6ca749e3699",
+      "name": "Email Cleaner"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\nJSON.stringify({\n  \"model\": \"meta-llama/llama-3.1-8b-instruct\",\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are Agent 1: Email Classifier for a Recruitment Intelligence Platform.\\nYour job is to analyze the provided email data and categorize it into exactly ONE of the following categories.\\n\\nVALID RECRUITMENT CATEGORIES:\\n- recruitment_company_email (Recruiter emailing from a corporate/company domain)\\n- recruitment_personal_email (Recruiter emailing from a public domain like @gmail.com)\\n- interview_invite\\n- assessment_invite\\n- offer_letter\\n- application_confirmation\\n- rejection\\n- job_alert_linkedin\\n- job_alert_naukri\\n- job_alert_indeed\\n- job_alert_foundit\\n\\nREJECTION CATEGORIES (Noise):\\n- newsletter\\n- webinar_workshop\\n- marketing\\n- community_event\\n- project_submission_reminder\\n- india_runs_reminder\\n- other_reject\\n\\nRULES:\\n1. You must respond strictly in valid JSON format.\\n2. The JSON must contain exactly three keys: \\\"category\\\", \\\"confidence\\\", and \\\"reasoning\\\".\\n3. \\\"confidence\\\" must be an integer between 0 and 100.\\n\\nEXPECTED JSON FORMAT:\\n{\\n  \\\"category\\\": \\\"one_of_the_exact_category_strings_above\\\",\\n  \\\"confidence\\\": 95,\\n  \\\"reasoning\\\": \\\"One short sentence explaining why.\\\"\\n}\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Sender Email: \" + $json.sender_email + \"\\nSubject: \" + $json.subject + \"\\nBody: \" + $json.email_body_clean\n    }\n  ]\n})\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -128,
+        576
+      ],
+      "id": "a0d0ee16-5e57-48bf-a977-45cef31ff4fe",
+      "name": "Agent 1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\nJSON.stringify({\n  \"model\": \"meta-llama/llama-3.1-8b-instruct\",\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are Agent 2: Hiring Validator. Your job is to review the classification made by Agent 1 and verify if the email contains legitimate recruitment-related information.\\n\\nMASTER TAXONOMY LIST:\\n- recruitment_company_email, recruitment_personal_email, interview_invite, assessment_invite, offer_letter, application_confirmation, rejection, job_alert_linkedin, job_alert_naukri, job_alert_indeed, job_alert_foundit, other_reject\\n\\nRULES:\\n1. Respond strictly in valid JSON format with three keys: \\\"hiring_intent_valid\\\" (boolean), \\\"final_category\\\" (string), and \\\"validation_reason\\\" (string).\\n2. If the email is a direct hiring opportunity (e.g., interview, offer) or a relevant job alert from a recognized platform (job_alert_linkedin, etc.), set 'hiring_intent_valid' to true.\\n3. If 'hiring_intent_valid' is true, preserve Agent 1's category.\\n4. If the email is clearly noise (newsletter, marketing, non-hiring personal collaboration), set 'hiring_intent_valid' to false and 'final_category' to 'other_reject'.\\n5. NEVER invent new categories.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Agent 1 Category: \" + $json.category + \"\\nEmail Subject: \" + $('Email Cleaner').item.json.subject + \"\\nEmail Body: \" + $('Email Cleaner').item.json.email_body_clean\n    }\n  ]\n})\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        48,
+        336
+      ],
+      "id": "199f04f5-709f-4ebb-99ea-5979a1fe422d",
+      "name": "Agent 2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Get the raw text response from Agent 2\nconst agent2RawContent = $input.first().json.choices[0].message.content;\n\n// 2. Parse the text into a real JavaScript object\nlet agent2Data;\ntry {\n    agent2Data = JSON.parse(agent2RawContent);\n} catch (error) {\n    throw new Error(\"Failed to parse Agent 2 JSON. AI might have hallucinated formatting.\");\n}\n\n// 3. Fetch the original clean email data\nconst emailData = $('Email Cleaner').first().json;\n\n// 4. RULE EVALUATION (Deterministic Logic)\n// Rule A: Intent must be valid\nconst isIntentValid = agent2Data.hiring_intent_valid === true;\n// Rule B: Category must be one of the explicitly approved recruitment categories\nconst allowedCategories = [\n    \"recruitment_company_email\",\n    \"recruitment_personal_email\",\n    \"interview_invite\",\n    \"assessment_invite\",\n    \"offer_letter\",\n    \"application_confirmation\",\n    \"rejection\",\n    \"job_alert_linkedin\",\n    \"job_alert_naukri\",\n    \"job_alert_indeed\",\n    \"job_alert_foundit\"\n];\nconst isValidCategory = allowedCategories.includes(agent2Data.final_category);\n\n// 5. DECISION\nif (isIntentValid && isValidCategory) {\n    // If it passes the rules, we bundle everything together and send it forward\n    return [\n        {\n            json: {\n                message_id: emailData.message_id,\n                date: emailData.date,\n                subject: emailData.subject,\n                sender_email: emailData.sender_email,\n                sender_name: emailData.sender_name,\n                email_body_clean: emailData.email_body_clean,\n                final_category: agent2Data.final_category,\n                validation_reason: agent2Data.validation_reason,\n                status: \"APPROVED_FOR_EXTRACTION\"\n            }\n        }\n    ];\n} else {\n    // If it fails the rules we return an empty array.\n    // In n8n, returning an empty array STOPS the workflow execution for this branch.\n    return [];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        752
+      ],
+      "id": "7e55909e-2153-4dbf-a989-bd72a0b74968",
+      "name": "Rule Engine"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst processedItems = [];\n\n// List of common public/free email providers to check against\nconst publicDomains = [\n    'gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', \n    'live.com', 'icloud.com', 'zoho.com', 'proton.me', 'protonmail.com'\n];\n\nfor (const item of items) {\n    const data = item.json;\n    const category = data.final_category || \"\";\n    const email = data.sender_email || \"\";\n    const domain = email.split('@')[1] ? email.split('@')[1].toLowerCase() : \"\";\n\n    let platformSource = \"other\";\n\n    // 1. Direct platform alert matching\n    if (category === \"job_alert_linkedin\") {\n        platformSource = \"linkedin\";\n    } else if (category === \"job_alert_naukri\") {\n        platformSource = \"naukri\";\n    } else if (category === \"job_alert_indeed\") {\n        platformSource = \"indeed\";\n    } else if (category === \"job_alert_foundit\") {\n        platformSource = \"foundit\";\n    } \n    // 2. Direct recruiter matching based on email classification\n    else if (category === \"recruitment_company_email\") {\n        platformSource = \"company_direct\";\n    } else if (category === \"recruitment_personal_email\") {\n        platformSource = \"company_email\";\n    }\n    // 3. Fallback routing for transactional states (invites, updates, offers)\n    else if ([\"interview_invite\", \"assessment_invite\", \"offer_letter\", \"application_confirmation\", \"rejection\"].includes(category)) {\n        if (publicDomains.includes(domain)) {\n            platformSource = \"company_email\"; // Sent by an individual from a public account\n        } else {\n            platformSource = \"company_direct\"; // Sent from an official corporate domain\n        }\n    }\n\n    // Append the detected platform source to our data packet\n    processedItems.push({\n        json: {\n            ...data,\n            platform_source: platformSource\n        }\n    });\n}\n\nreturn processedItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        304
+      ],
+      "id": "f9958f52-a59f-409c-b4c1-9244b7bd9270",
+      "name": "Platform Detector"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\nJSON.stringify({\n  \"model\": \"meta-llama/llama-3.1-8b-instruct\",\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are the Job Extractor Agent. Your single task is to extract ALL job openings listed within the provided email body text.\\n\\nRULES:\\n1. Respond strictly in valid JSON format.\\n2. Output a single top-level key named \\\"jobs\\\" which contains an array of objects.\\n3. For each job found, extract exactly three fields: \\\"company\\\", \\\"role\\\", and \\\"location\\\".\\n4. If a field like location cannot be found or inferred from the text, set its value to null.\\n5. Do not miss any jobs if multiple are listed.\\n\\nEXPECTED JSON FORMAT:\\n{\\n  \\\"jobs\\\": [\\n    {\\n      \\\"company\\\": \\\"Example Corp\\\",\\n      \\\"role\\\": \\\"Software Engineer\\\",\\n      \\\"location\\\": \\\"Remote\\\"\\n    }\\n  ]\\n}\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Email Body: \" + $('Email Cleaner').item.json.email_body_clean\n    }\n  ]\n})\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        752,
+        336
+      ],
+      "id": "1d43d5df-4e73-4634-9861-0f50a7bed37b",
+      "name": "Job Extractor"
+    },
+    {
+      "parameters": {
+        "table": {
+          "__rl": true,
+          "value": "jobs",
+          "mode": "list",
+          "cachedResultName": "jobs"
+        },
+        "dataMode": "defineBelow",
+        "valuesToSend": {
+          "values": [
+            {
+              "column": "message_id",
+              "value": "={{ $('Email Cleaner').item.json.message_id }}"
+            },
+            {
+              "column": "company",
+              "value": "={{ $json.company }}"
+            },
+            {
+              "column": "role",
+              "value": "={{ $json.role }}"
+            },
+            {
+              "column": "location",
+              "value": "={{ $json.location }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        1280,
+        112
+      ],
+      "id": "928ef22f-8474-4a2c-b990-eaabff030362",
+      "name": "jobs",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "table": {
+          "__rl": true,
+          "value": "email_events",
+          "mode": "list",
+          "cachedResultName": "email_events"
+        },
+        "dataMode": "defineBelow",
+        "columnToMatchOn": "message_id",
+        "valueToMatchOn": "={{ $('Email Cleaner').item.json.message_id }}",
+        "valuesToSend": {
+          "values": [
+            {
+              "column": "email_date",
+              "value": "={{ $('Email Cleaner').item.json.date }}"
+            },
+            {
+              "column": "platform_source",
+              "value": "={{ $('Platform Detector').item.json.platform_source }}"
+            },
+            {
+              "column": "final_category",
+              "value": "={{ $('Agent 2').item.json.final_category }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        1376,
+        848
+      ],
+      "id": "563b6fc1-15e3-4d6e-8eb9-a5722d0cb2d1",
+      "name": "email events",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Get the raw response from the Job Extractor node\nconst inputData = $input.first().json;\nconst extractorRawContent = inputData.choices[0].message.content;\n\n// 2. Parse the stringified text into a real object\nlet extractorData;\ntry {\n    extractorData = JSON.parse(extractorRawContent);\n} catch (error) {\n    throw new Error(\"Failed to parse Job Extractor JSON payload.\");\n}\n\nconst jobsArray = extractorData.jobs || [];\n\n// 3. Fetch parent metadata from the Platform Detector node\nconst parentMetadata = $('Platform Detector').first().json;\n\nconst updatedItems = [];\n\n// 4. Transform the array into individual n8n items\nfor (const job of jobsArray) {\n    updatedItems.push({\n        json: {\n            message_id: parentMetadata.message_id,\n            email_date: parentMetadata.date,\n            platform_source: parentMetadata.platform_source,\n            final_category: parentMetadata.final_category,\n            company: job.company || \"Unknown Company\",\n            role: job.role || \"Unknown Role\",\n            location: job.location || null\n        }\n    });\n}\n\nreturn updatedItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        560
+      ],
+      "id": "7a8ca528-800b-4a6b-907f-1672ea435b00",
+      "name": "Split Jobs"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Fetch ALL items from the 'Split Jobs' node to ensure we process every job\nconst splitJobsItems = $('Split Jobs').all();\n\n// Safety check: ensure the data is in memory\nif (!splitJobsItems || splitJobsItems.length === 0) {\n    throw new Error(\"No data found in 'Split Jobs'. Please go back and click 'Test step' on Node 8, then immediately test this node.\");\n}\n\nconst dashboardItems = [];\n\nfor (const item of splitJobsItems) {\n    const sourceJob = item.json;\n\n    // 2. Format localized presentation fields\n    const rawDate = new Date(sourceJob.email_date);\n    const formattedDisplayDate = isNaN(rawDate.getTime()) \n        ? \"Recent\" \n        : rawDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });\n\n    // 3. Apply structural casing normalization to properties\n    const cleanCompany = (sourceJob.company || \"Unknown\").replace(/\\s+/g, ' ').trim();\n    const cleanRole = (sourceJob.role || \"Unknown\").replace(/\\s+/g, ' ').trim();\n    const cleanLocation = sourceJob.location ? sourceJob.location.trim() : \"Not Specified\";\n\n    // 4. Calculate an analytical pipeline priority metric based on category\n    let structuralPriority = \"MEDIUM\";\n    if ([\"interview_invite\", \"offer_letter\"].includes(sourceJob.final_category)) {\n        structuralPriority = \"HIGH\";\n    } else if ([\"rejection\", \"other_reject\"].includes(sourceJob.final_category)) {\n        structuralPriority = \"LOW\";\n    }\n\n    // 5. Construct the final dashboard-ready contract\n    dashboardItems.push({\n        json: {\n            tracker_id: sourceJob.message_id,\n            display_date: formattedDisplayDate,\n            origin_platform: sourceJob.platform_source,\n            classification: sourceJob.final_category,\n            company_display: cleanCompany,\n            role_display: cleanRole,\n            location_display: cleanLocation,\n            pipeline_priority: structuralPriority,\n            processed_timestamp: new Date().toISOString()\n        }\n    });\n}\n\nreturn dashboardItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1456,
+        464
+      ],
+      "id": "48272d60-7ff4-4cc5-bbc9-055c9e7e5075",
+      "name": "Dashboard Data Layer"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst alertResults = [];\n\nfor (const item of items) {\n    const data = item.json;\n    const priority = data.pipeline_priority || \"MEDIUM\";\n    const classification = data.classification || \"\";\n\n    // RULE: Only trigger alerts for actionable metrics (High & Medium priority)\n    // Do not trigger alerts for rejections or standard confirmation noise\n    const isActionable = priority === \"HIGH\" || priority === \"MEDIUM\";\n    const isNotRejection = ![\"rejection\", \"other_reject\"].includes(classification);\n\n    if (isActionable && isNotRejection) {\n        // Construct a clean presentation notification string\n        const alertMessage = `🚨 NEW RECRUITMENT OPPORTUNITY DETECTED 🚨\\n\\n` +\n                             `• Role: ${data.role_display}\\n` +\n                             `• Company: ${data.company_display}\\n` +\n                             `• Location: ${data.location_display}\\n` +\n                             `• Source Platform: ${data.origin_platform.toUpperCase()}\\n` +\n                             `• Priority Level: ${priority}\\n` +\n                             `• Date Received: ${data.display_date}\\n\\n` +\n                             `System Tracking ID: ${data.tracker_id}`;\n\n        alertResults.push({\n            json: {\n                alert_triggered: true,\n                dispatch_timestamp: new Date().toISOString(),\n                target_priority: priority,\n                notification_subject: `[Job Alert] ${data.role_display} at ${data.company_display}`,\n                notification_body: alertMessage,\n                tracker_id: data.tracker_id\n            }\n        });\n    } else {\n        // Log entry indicating the item bypassed the notification protocol safely\n        alertResults.push({\n            json: {\n                alert_triggered: false,\n                reason: `Item classified as ${classification} (${priority} priority). Notification bypassed.`,\n                tracker_id: data.tracker_id\n            }\n        });\n    }\n}\n\nreturn alertResults;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1856,
+        496
+      ],
+      "id": "dad4be8f-0944-4903-b70f-c2eec2055327",
+      "name": "Alert Engine"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3c020a8f-8111-49d1-ac64-d2f10c66208e",
+              "leftValue": "={{ $json.alert_triggered }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        2032,
+        288
+      ],
+      "id": "1757ee0d-a118-4128-92c1-e5169d266700",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "Enter Your Discord webhook",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\nJSON.stringify({\n  \"embeds\": [\n    {\n      \"color\": 1982639,\n      \"description\": $json.notification_body\n    }\n  ]\n})\n}}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 5000
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2272,
+        288
+      ],
+      "id": "22fe8e9c-fcfd-41c7-ac9c-574aec313e0d",
+      "name": "Discord alert"
+    },
+    {
+      "parameters": {
+        "sendTo": "your sender email",
+        "subject": "={{ $json.notification_subject }}",
+        "message": "=<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);\">\n  \n  <!-- Header -->\n  <div style=\"background: linear-gradient(135deg, #0f172a, #1e3a8a); color: #ffffff; padding: 25px; text-align: center;\">\n    <h2 style=\"margin: 0; font-size: 22px; letter-spacing: 0.5px;\">🚨 New Recruitment Opportunity</h2>\n  </div>\n  \n  <!-- Body -->\n  <div style=\"padding: 30px; background-color: #f8fafc;\">\n    <p style=\"font-size: 15px; color: #475569; margin-bottom: 25px; line-height: 1.5;\">\n      A new actionable job listing has been evaluated and approved by your AI pipeline.\n    </p>\n\n    <!-- Data Table -->\n    <table style=\"width: 100%; border-collapse: collapse; background-color: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0;\">\n      <tr>\n        <td style=\"padding: 16px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #64748b; width: 35%; font-size: 14px;\">Role</td>\n        <td style=\"padding: 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-weight: bold; font-size: 15px;\">\n          {{ $('Dashboard Data Layer').item.json.role_display }}\n        </td>\n      </tr>\n      <tr>\n        <td style=\"padding: 16px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #64748b; font-size: 14px;\">Company</td>\n        <td style=\"padding: 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 15px;\">\n          {{ $('Dashboard Data Layer').item.json.company_display }}\n        </td>\n      </tr>\n      <tr>\n        <td style=\"padding: 16px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #64748b; font-size: 14px;\">Location</td>\n        <td style=\"padding: 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 15px;\">\n          {{ $('Dashboard Data Layer').item.json.location_display }}\n        </td>\n      </tr>\n      <tr>\n        <td style=\"padding: 16px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #64748b; font-size: 14px;\">Priority</td>\n        <td style=\"padding: 16px; border-bottom: 1px solid #e2e8f0;\">\n          <span style=\"background-color: #dbeafe; color: #1e40af; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: bold; letter-spacing: 0.5px;\">\n            {{ $('Dashboard Data Layer').item.json.pipeline_priority }}\n          </span>\n        </td>\n      </tr>\n      <tr>\n        <td style=\"padding: 16px; font-weight: bold; color: #64748b; font-size: 14px;\">Source</td>\n        <td style=\"padding: 16px; color: #0f172a; font-size: 15px;\">\n          {{ $('Dashboard Data Layer').item.json.origin_platform }}\n        </td>\n      </tr>\n    </table>\n\n    <!-- Footer -->\n    <div style=\"margin-top: 35px; font-size: 12px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px;\">\n      System Tracking ID: <span style=\"font-family: monospace;\">{{ $('Dashboard Data Layer').item.json.tracker_id }}</span><br>\n      Processed on: {{ $('Dashboard Data Layer').item.json.display_date }}\n    </div>\n  </div>\n</div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2304,
+        672
+      ],
+      "id": "f30a4de8-f72d-4b5e-a190-a51368ded40f",
+      "name": "Gmail alert"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ab3291db-094b-4c7a-b744-e017dc3e61db",
+              "leftValue": "={{ JSON.parse($json.choices[0].message.content).hiring_intent_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        256,
+        336
+      ],
+      "id": "eceac688-4242-415a-b04b-d5acb9bf8335",
+      "name": "If"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Email Cleaner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Cleaner": {
+      "main": [
+        [
+          {
+            "node": "Agent 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 1": {
+      "main": [
+        [
+          {
+            "node": "Agent 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 2": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rule Engine": {
+      "main": [
+        [
+          {
+            "node": "Platform Detector",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Platform Detector": {
+      "main": [
+        [
+          {
+            "node": "Job Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Job Extractor": {
+      "main": [
+        [
+          {
+            "node": "Split Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "jobs": {
+      "main": [
+        []
+      ]
+    },
+    "Split Jobs": {
+      "main": [
+        [
+          {
+            "node": "email events",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "jobs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Dashboard Data Layer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dashboard Data Layer": {
+      "main": [
+        [
+          {
+            "node": "Alert Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Engine": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Gmail alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Discord alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Rule Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "tags": []
+}

@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RecruitAI — Intelligence Pipeline</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <!-- Ambient Background -->
+    <div class="ambient-layer" aria-hidden="true">
+        <div class="ambient-orb orb-1"></div>
+        <div class="ambient-orb orb-2"></div>
+        <div class="grid-overlay"></div>
+    </div>
+
+    <div class="app-shell">
+
+        <!-- ── HEADER ── -->
+        <header class="app-header">
+            <div class="header-brand">
+                <div class="brand-mark">
+                    <span class="brand-icon">
+                        <i class="fa-solid fa-microchip"></i>
+                    </span>
+                    <div class="scan-line" aria-hidden="true"></div>
+                </div>
+                <div class="brand-text">
+                    <h1>Recruit<span class="brand-ai">AI</span></h1>
+                    <p class="brand-sub">Intelligence Pipeline</p>
+                </div>
+            </div>
+            <div class="header-status">
+                <div class="status-item">
+                    <span class="status-dot live"></span>
+                    <span class="status-label">Feed Active</span>
+                </div>
+                <div class="status-divider" aria-hidden="true"></div>
+                <div class="status-item">
+                    <i class="fa-solid fa-database status-icon"></i>
+                    <span class="status-label">DB Connected</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ── METRICS ROW ── -->
+        <section class="metrics-row" aria-label="Dashboard metrics">
+
+            <div class="metric-card metric-primary">
+                <div class="metric-accent-bar"></div>
+                <div class="metric-icon-wrap">
+                    <i class="fa-solid fa-briefcase"></i>
+                </div>
+                <div class="metric-content">
+                    <span class="metric-label">Verified Roles</span>
+                    <strong class="metric-value mono">{{ total_jobs }}</strong>
+                </div>
+                <div class="metric-sparkline" aria-hidden="true">
+                    <svg viewBox="0 0 80 28" preserveAspectRatio="none">
+                        <polyline points="0,22 12,18 24,20 36,10 48,14 60,6 72,9 80,4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+            </div>
+
+            <div class="metric-card metric-secondary">
+                <div class="metric-accent-bar"></div>
+                <div class="metric-icon-wrap">
+                    <i class="fa-solid fa-satellite-dish"></i>
+                </div>
+                <div class="metric-content">
+                    <span class="metric-label">Top Source</span>
+                    <strong class="metric-value mono">{{ top_source }}</strong>
+                </div>
+                <div class="metric-tag">primary</div>
+            </div>
+
+            <div class="metric-card metric-tertiary">
+                <div class="metric-accent-bar"></div>
+                <div class="metric-icon-wrap">
+                    <i class="fa-solid fa-wave-square"></i>
+                </div>
+                <div class="metric-content">
+                    <span class="metric-label">Pipeline Status</span>
+                    <strong class="metric-value metric-live">
+                        <span class="pulse-dot" aria-hidden="true"></span>
+                        Filtering Active
+                    </strong>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- ── COMMAND BAR ── -->
+        <div class="command-bar">
+            <div class="search-wrap">
+                <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                <input
+                    type="text"
+                    id="searchInput"
+                    onkeyup="filterTable()"
+                    placeholder="Search roles, companies, locations..."
+                    autocomplete="off"
+                    spellcheck="false"
+                    class="search-input"
+                    aria-label="Search jobs"
+                >
+                <span class="search-shortcut" aria-hidden="true">⌘K</span>
+            </div>
+            <div class="table-meta" id="tableMeta" aria-live="polite">
+                <span class="mono">Showing <strong id="visibleCount">{{ total_jobs }}</strong> of {{ total_jobs }} results</span>
+            </div>
+        </div>
+
+        <!-- ── DATA TABLE ── -->
+        <div class="table-container">
+            <table class="data-table" id="jobsTable" aria-label="Job listings">
+                <thead>
+                    <tr>
+                        <th class="col-role">Role</th>
+                        <th class="col-company">Company</th>
+                        <th class="col-source">Source</th>
+                        <th class="col-action">Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in jobs %}
+                    <tr class="table-row" style="--row-index: {{ loop.index }}">
+                        <td class="cell-role role-cell" title="{{ job.role }}">
+                            <span class="role-text">{{ job.role }}</span>
+                        </td>
+                        <td class="cell-company company-cell">
+                            <div class="company-wrap">
+                                <div class="company-avatar" aria-hidden="true">{{ job.company[0] | upper }}</div>
+                                <span>{{ job.company }}</span>
+                            </div>
+                        </td>
+                        <td class="cell-source">
+                            <span class="source-badge source-{{ (job.platform_source | lower) if job.platform_source else 'unknown' }}">
+                                {{ job.platform_source | upper if job.platform_source else 'UNKNOWN' }}
+                            </span>
+                        </td>
+                        <td class="cell-action">
+                            <button
+                                class="btn-details"
+                                onclick="openModal(this)"
+                                data-role="{{ job.role }}"
+                                data-company="{{ job.company }}"
+                                data-location="{{ job.location if job.location else 'Not Specified' }}"
+                                data-source="{{ job.platform_source | upper if job.platform_source else 'UNKNOWN' }}"
+                                data-category="{{ job.final_category }}"
+                                data-date="{{ job.formatted_date }}"
+                                aria-label="View details for {{ job.role }} at {{ job.company }}"
+                            >
+                                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                                <span>View</span>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <!-- Empty State -->
+            <div class="empty-state" id="emptyState" aria-live="polite">
+                <i class="fa-solid fa-filter-circle-xmark"></i>
+                <p>No results match your search.</p>
+                <button onclick="clearSearch()" class="btn-clear-search">Clear Filter</button>
+            </div>
+        </div>
+
+    </div><!-- /app-shell -->
+
+
+    <!-- ── MODAL ── -->
+    <div id="detailsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-backdrop" onclick="closeModal()"></div>
+
+        <div class="modal-panel">
+
+            <div class="modal-header">
+                <div class="modal-header-icon" aria-hidden="true">
+                    <i class="fa-solid fa-building-columns"></i>
+                </div>
+                <div class="modal-header-text">
+                    <p class="modal-eyebrow">Job Record</p>
+                    <h2 id="modalTitle" class="modal-company">Company Name</h2>
+                </div>
+                <button class="modal-close" onclick="closeModal()" aria-label="Close modal">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="modal-body">
+
+                <div class="modal-role-block">
+                    <span class="detail-label">Target Role</span>
+                    <p id="modalRole" class="modal-role-name">Role Name</p>
+                </div>
+
+                <div class="modal-grid">
+                    <div class="detail-cell">
+                        <span class="detail-label"><i class="fa-solid fa-location-dot"></i> Location</span>
+                        <strong id="modalLocation" class="detail-value">Location</strong>
+                    </div>
+                    <div class="detail-cell">
+                        <span class="detail-label"><i class="fa-solid fa-satellite-dish"></i> Platform</span>
+                        <strong id="modalSource" class="detail-value">Source</strong>
+                    </div>
+                </div>
+
+                <div class="modal-divider" aria-hidden="true"></div>
+
+                <div class="modal-ai-section">
+                    <span class="ai-section-label">
+                        <i class="fa-solid fa-microchip"></i>
+                        AI Extraction Details
+                    </span>
+                    <div class="ai-detail-row">
+                        <span class="detail-label">Detected Category</span>
+                        <code id="modalCategory" class="code-pill">Category</code>
+                    </div>
+                    <div class="ai-detail-row">
+                        <span class="detail-label">Processed On</span>
+                        <span id="modalDate" class="detail-value mono">Date</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" onclick="closeModal()" class="btn-close-modal">
+                    <i class="fa-solid fa-times"></i> Close Panel
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
