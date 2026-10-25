@@ -124,7 +124,7 @@ Install or configure the following:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/RecruitAI.git
+git clone https://github.com/pragadeesh345/RecruitAI.git
 cd RecruitAI
 ```
 
